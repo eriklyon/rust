@@ -414,6 +414,11 @@ pub fn uninstall_package_from(workspace: &Path, pkgid: &PkgId) {
 
 }
 
+pub fn dir_has_crate_file(dir: &Path) -> bool {
+    dir_has_file(dir, "lib.rs") || dir_has_file(dir, "main.rs")
+        || dir_has_file(dir, "test.rs") || dir_has_file(dir, "bench.rs")
+}
+
 fn dir_has_file(dir: &Path, file: &str) -> bool {
     assert!(dir.is_absolute());
     os::path_exists(&dir.push(file))
@@ -427,8 +432,7 @@ pub fn find_dir_using_rust_path_hack(p: &PkgId) -> Option<Path> {
         // has a name that's a single component
         if dir.is_parent_of(&p.path) || dir.is_parent_of(&versionize(&p.path, &p.version)) {
             debug2!("In find_dir_using_rust_path_hack: checking dir {}", dir.to_str());
-            if dir_has_file(dir, "lib.rs") || dir_has_file(dir, "main.rs")
-                || dir_has_file(dir, "test.rs") || dir_has_file(dir, "bench.rs") {
+            if dir_has_crate_file(dir) {
                 debug2!("Did find id {} in dir {}", p.to_str(), dir.to_str());
                 return Some(dir.clone());
             }

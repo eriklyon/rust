@@ -552,7 +552,11 @@ fn test_make_dir_rwx() {
     assert!(os::remove_dir_recursive(&dir));
 }
 
+// The following two tests call into the rustpkg library directly, and that's not
+// really thread-safe. They should still work, but they fail mysteriously on
+// rust-linux2. Ignored.
 #[test]
+#[ignore]
 fn test_install_valid() {
     use path_util::installed_library_in_workspace;
 
@@ -593,6 +597,7 @@ fn test_install_valid() {
 }
 
 #[test]
+#[ignore]
 fn test_install_invalid() {
     let sysroot = test_sysroot();
     let pkgid = fake_pkg();
@@ -613,7 +618,43 @@ fn test_install_invalid() {
     assert!(result == Err(()));
 }
 
-// Tests above should (maybe) be converted to shell out to rustpkg, too
+#[test]
+fn test_install_valid_external() {
+    let temp_pkg_id = PkgId::new("foo");
+    let (tempdir, _) = mk_temp_workspace(&temp_pkg_id.path,
+                                         &temp_pkg_id.version);
+    let temp_workspace = tempdir.path();
+    command_line_test([~"install", ~"foo"], temp_workspace);
+
+    // Check that all files exist
+    let exec = target_executable_in_workspace(&temp_pkg_id, temp_workspace);
+    debug2!("exec = {}", exec.to_str());
+    assert!(os::path_exists(&exec));
+    assert!(is_rwx(&exec));
+
+    let lib = installed_library_in_workspace(&temp_pkg_id.path, temp_workspace);
+    debug2!("lib = {:?}", lib);
+    assert!(lib.as_ref().map_default(false, |l| os::path_exists(l)));
+    assert!(lib.as_ref().map_default(false, |l| is_rwx(l)));
+
+    // And that the test and bench executables aren't installed
+    assert!(!os::path_exists(&target_test_in_workspace(&temp_pkg_id, temp_workspace)));
+    let bench = target_bench_in_workspace(&temp_pkg_id, temp_workspace);
+    debug2!("bench = {}", bench.to_str());
+    assert!(!os::path_exists(&bench));
+
+}
+
+#[test]
+fn test_install_invalid_external() {
+    let cwd = os::getcwd();
+    command_line_test_expect_fail([~"install", ~"foo"],
+                                  &cwd,
+                                  None,
+                                  // FIXME #3408: Should be NONEXISTENT_PACKAGE_CODE
+                                  COPY_FAILED_CODE);
+}
+
 #[test]
 fn test_install_git() {
     let temp_pkg_id = git_repo_pkg();
@@ -1309,6 +1350,8 @@ fn rust_path_hack_test(hack_flag: bool) {
    assert!(!built_executable_exists(workspace, "foo"));
 }
 
+// Notice that this is the only test case where the --rust-path-hack
+// flag is actually needed
 #[test]
 fn test_rust_path_can_contain_package_dirs_with_flag() {
 /*
@@ -2082,6 +2125,18 @@ fn test_compile_error() {
             debug2!("Failed with status {:?}... that's good, right?", status);
         }
     }
+}
+
+#[test]
+fn find_sources_in_cwd() {
+    let temp_dir = TempDir::new("sources").expect("find_sources_in_cwd failed");
+    let temp_dir = temp_dir.path();
+    let source_dir = temp_dir.push("foo");
+    os::mkdir_recursive(&source_dir, U_RWX);
+    writeFile(&source_dir.push("main.rs"),
+              "fn main() { let _x = (); }");
+    command_line_test([~"install", ~"foo"], &source_dir);
+    assert_executable_exists(&source_dir.push(".rust"), "foo");
 }
 
 /// Returns true if p exists and is executable
